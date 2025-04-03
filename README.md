@@ -11,6 +11,8 @@
 6. VPN Segura: usando OpenVPN
 7. Implementação de DHCP
 
+![alt text](<utils/Topologia de Rede.svg>)
+
 Estrutura de Diretórios:
 
 ```
