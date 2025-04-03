@@ -42,6 +42,32 @@ sudo apt update
 sudo apt install -y docker.io docker-compose
 ```
 
+3. **Autorizar o Usuário para Usar o Docker**
+
+Por padrão, apenas o usuário root pode executar comandos Docker. Para permitir que o usuário **ubuntu** utilize o Docker sem `sudo`, adicione-o ao grupo Docker:
+
+```sh
+sudo usermod -aG docker ubuntu
+```
+
+Aplique as alterações sem precisar sair da sessão:
+
+```sh
+newgrp docker
+```
+
+Para garantir que o Docker está rodando corretamente, execute:
+
+```sh
+docker ps
+```
+
+Se ocorrer erro de permissão, reinicie a máquina:
+
+```sh
+sudo reboot
+```
+
 ---
 
 ## 2. Criando a Aplicação Web
@@ -217,59 +243,7 @@ http {
 
 ---
 
-## 5. Monitoramento de Contêineres
-
-Criar o script de monitoramento:
-
-```sh
-nano ~/projeto-loadbalancer/monitoramento.sh
-```
-
-```sh
-#!/bin/bash
-
-# Lista de contêineres a serem monitorados
-CONTAINERS=("banco-dados" "app1" "app2" "app3" "loadbalancer")
-
-# Verifica o status de cada contêiner
-for CONTAINER in "${CONTAINERS[@]}"; do
-    STATUS=$(docker inspect --format='{{.State.Running}}' $CONTAINER 2>/dev/null)
-    if [ "$STATUS" == "true" ]; then
-        echo "$CONTAINER está rodando"
-    else
-        echo "$CONTAINER caiu! Reiniciando..."
-        docker restart $CONTAINER
-    fi
-done
-```
-
-Tornar o script executável:
-
-```sh
-chmod +x ~/projeto-loadbalancer/monitoramento.sh
-```
-
-Executar manualmente:
-
-```sh
-./monitoramento.sh
-```
-
-Automatizar a execução a cada 5 minutos:
-
-```sh
-crontab -e
-```
-
-Adicionar a linha:
-
-```
-*/5 * * * * /home/ubuntu/projeto-loadbalancer/monitoramento.sh >> /home/ubuntu/projeto-loadbalancer/logs_monitoramento.txt 2>&1
-```
-
----
-
-## 6. Subindo Todos os Contêineres
+## 5. Subindo Todos os Contêineres
 
 ```sh
 cd ~/projeto-loadbalancer
