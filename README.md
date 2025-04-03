@@ -5,9 +5,8 @@
 ## Arquitetura do Projeto
 
 1. Banco de Dados: PostgreSQL rodando em um contêiner.
-2. Aplicação Web: Três instâncias rodando simultaneamente.
+2. Aplicação Web: Três instâncias rodando simultaneamente. A aplicação mostra onde está rodando
 3. Balanceador de Carga: Nginx distribuindo as requisições entre os contêineres.
-4. Monitoramento: Script para verificar a disponibilidade dos contêineres.
 5. Proxy Reverso: 
 6. VPN Segura: usando OpenVPN
 7. Implementação de DHCP
@@ -18,7 +17,6 @@ Estrutura de Diretórios:
 /home/ubuntu/projeto-loadbalancer
 │── docker-compose.yml
 │── nginx.conf
-│── monitoramento.sh
 │── /app
 │   │── package.json
 │   │── server.js
