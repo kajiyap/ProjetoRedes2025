@@ -7,9 +7,7 @@
 1. Banco de Dados: PostgreSQL rodando em um contêiner.
 2. Aplicação Web: Três instâncias rodando simultaneamente. A aplicação mostra onde está rodando
 3. Balanceador de Carga: Nginx distribuindo as requisições entre os contêineres.
-5. Proxy Reverso: 
-6. VPN Segura: usando OpenVPN
-7. Implementação de DHCP
+4. ProxyReverso: Redirecionando usuários
 
 ![alt text](<utils/Topologia de Rede.svg>)
 
