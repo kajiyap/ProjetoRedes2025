@@ -6,9 +6,9 @@ services:
     container_name: banco-dados
     restart: always
     environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: senha123
-      POSTGRES_DB: meu_banco
+      POSTGRES_USER: 
+      POSTGRES_PASSWORD: 
+      POSTGRES_DB: 
     ports:
       - "5432:5432"  # Mapeia a porta do banco de dados
     volumes:
