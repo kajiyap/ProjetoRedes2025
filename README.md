@@ -24,6 +24,7 @@
 │   │   ├── script.js
 ```
 
+![alt text](<utils/Topologia de Rede.svg>)
 ---
 
 ## 1. Configurando a Instância AWS Ubuntu
