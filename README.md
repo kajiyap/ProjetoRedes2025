@@ -4,63 +4,51 @@
 
 ## Arquitetura do Projeto
 
-1. Banco de Dados: PostgreSQL rodando em um contêiner.
-2. Aplicação Web: Três instâncias rodando simultaneamente. A aplicação mostra onde está rodando
-3. Balanceador de Carga: Nginx distribuindo as requisições entre os contêineres.
-4. ProxyReverso: Redirecionando usuários
+1. **Banco de Dados:** PostgreSQL rodando em um contêiner.
+2. **Aplicação Web:** Três instâncias rodando simultaneamente com Node.js + Express, exibindo o nome do contêiner.
+3. **Balanceador de Carga:** Nginx distribuindo as requisições entre os contêineres da aplicação.
 
-![alt text](<utils/Topologia de Rede.svg>)
-
-Estrutura de Diretórios:
+### Estrutura de Diretórios:
 
 ```
 /home/ubuntu/projeto-loadbalancer
-│── docker-compose.yml
-│── nginx.conf
-│── /app
-│   │── package.json
-│   │── server.js
-│   │── Dockerfile
+├── docker-compose.yml
+├── nginx.conf
+├── /app
+│   ├── package.json
+│   ├── server.js
+│   ├── Dockerfile
+│   ├── /public
+│   │   ├── index.html
+│   │   ├── style.css
+│   │   ├── script.js
 ```
 
 ---
 
 ## 1. Configurando a Instância AWS Ubuntu
 
-1. Acesse a instância via SSH:
+1. Acesse via SSH:
 
 ```sh
 ssh -i "seu-arquivo.pem" ubuntu@SEU_IP
 ```
 
-2. Instale o Docker e Docker Compose:
+2. Instale Docker e Docker Compose:
 
 ```sh
 sudo apt update
 sudo apt install -y docker.io docker-compose
 ```
 
-3. **Autorizar o Usuário para Usar o Docker**
-
-Por padrão, apenas o usuário root pode executar comandos Docker. Para permitir que o usuário **ubuntu** utilize o Docker sem `sudo`, adicione-o ao grupo Docker:
+3. Dê permissão para o usuário `ubuntu`:
 
 ```sh
 sudo usermod -aG docker ubuntu
-```
-
-Aplique as alterações sem precisar sair da sessão:
-
-```sh
 newgrp docker
 ```
 
-Para garantir que o Docker está rodando corretamente, execute:
-
-```sh
-docker ps
-```
-
-Se ocorrer erro de permissão, reinicie a máquina:
+Reinicie se necessário:
 
 ```sh
 sudo reboot
@@ -70,13 +58,7 @@ sudo reboot
 
 ## 2. Criando a Aplicação Web
 
-Criar a pasta e os arquivos:
-
-```sh
-mkdir -p ~/projeto-loadbalancer/app && cd ~/projeto-loadbalancer/app
-```
-
-### Criar o `package.json`
+### `package.json`
 
 ```json
 {
@@ -84,69 +66,182 @@ mkdir -p ~/projeto-loadbalancer/app && cd ~/projeto-loadbalancer/app
   "version": "1.0.0",
   "main": "server.js",
   "dependencies": {
-    "express": "^4.17.1"
+    "express": "^4.17.1",
+    "pg": "^8.7.1"
   }
 }
 ```
 
-### Criar o `server.js`
+### `server.js`
 
 ```js
 const express = require('express');
+const os = require('os');
+const { Pool } = require('pg');
+const path = require('path');
 const app = express();
 const PORT = 3000;
-const os = require('os');
 
-// Endpoint que retorna o nome do contêiner que está processando a requisição
-app.get('/', (req, res) => {
-  res.send(`Rodando no contêiner: ${os.hostname()}`);
+const SERVER_NAME = process.env.SERVER_NAME || os.hostname();
+
+const pool = new Pool({
+  user: 'admin',
+  host: 'db',
+  database: 'meu_banco',
+  password: 'senha123',
+  port: 5432
 });
 
-// Inicia o servidor na porta 3000
+app.use(express.json());
+app.use(express.static(path.join(__dirname)));
+
+app.get('/usuarios', async (req, res) => {
+  const result = await pool.query('SELECT * FROM usuarios');
+  res.json({ servidor: SERVER_NAME, usuarios: result.rows });
+});
+
+app.post('/usuarios', async (req, res) => {
+  const { nome, email } = req.body;
+  await pool.query('INSERT INTO usuarios (nome, email) VALUES ($1, $2)', [nome, email]);
+  res.sendStatus(201);
+});
+
+app.delete('/usuarios/:id', async (req, res) => {
+  const { id } = req.params;
+  await pool.query('DELETE FROM usuarios WHERE id = $1', [id]);
+  res.sendStatus(204);
+});
+
 app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`);
 });
 ```
 
-### Criar o `Dockerfile`
+### `Dockerfile`
 
 ```dockerfile
-# Usa a imagem oficial do Node.js na versão 18
 FROM node:18
-
-# Define o diretório de trabalho dentro do contêiner
 WORKDIR /app
-
-# Copia o arquivo package.json para instalar dependências
 COPY package.json .
-
-# Instala as dependências do projeto
 RUN npm install
-
-# Copia todos os arquivos do diretório atual para dentro do contêiner
 COPY . .
-
-# Define o comando padrão para rodar a aplicação
 CMD ["node", "server.js"]
 ```
 
-Criar a imagem da aplicação:
+### `index.html`
 
-```sh
-cd ~/projeto-loadbalancer/app
-docker build -t minha-aplicacao .
+```html
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gerenciar Usuários</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <h3 id="servidor">Servidor: </h3>
+  <h2>Gerenciar Usuários</h2>
+  <input type="text" id="nome" placeholder="Nome">
+  <input type="email" id="email" placeholder="Email">
+  <button onclick="adicionarUsuario()">Adicionar</button>
+  <h3>Lista de Usuários</h3>
+  <ul id="lista"></ul>
+  <script src="script.js"></script>
+</body>
+</html>
+```
+
+### `script.js`
+
+```js
+async function carregarUsuarios() {
+  const res = await fetch("/usuarios");
+  const data = await res.json();
+
+  document.getElementById("servidor").innerText = `Servidor: ${data.servidor}`;
+
+  const lista = document.getElementById("lista");
+  lista.innerHTML = "";
+
+  data.usuarios.forEach(u => {
+    const li = document.createElement("li");
+    li.innerHTML = `${u.id}: ${u.nome} - ${u.email} <button onclick="removerUsuario(${u.id})">X</button>`;
+    lista.appendChild(li);
+  });
+}
+
+async function adicionarUsuario() {
+  const nome = document.getElementById("nome").value;
+  const email = document.getElementById("email").value;
+
+  await fetch("/usuarios", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ nome, email })
+  });
+
+  carregarUsuarios();
+}
+
+async function removerUsuario(id) {
+  await fetch(`/usuarios/${id}`, { method: "DELETE" });
+  carregarUsuarios();
+}
+
+carregarUsuarios();
+```
+
+### `style.css`
+
+```css
+body {
+  font-family: sans-serif;
+  margin: 2rem;
+  background-color: #f9f9f9;
+}
+
+input {
+  margin: 0.5rem;
+  padding: 0.5rem;
+}
+
+button {
+  padding: 0.5rem 1rem;
+  margin-left: 0.5rem;
+  cursor: pointer;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+}
+
+ul {
+  list-style-type: none;
+  padding-left: 0;
+}
+
+li {
+  margin: 0.5rem 0;
+  background: #ffffff;
+  padding: 0.5rem;
+  border-radius: 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
 ```
 
 ---
 
-## 3. Criando o Arquivo `docker-compose.yml`
+## 3. Arquivo `docker-compose.yml`
 
 ```yaml
 version: '3.8'
 
 services:
   db:
-    image: postgres:latest  # Usa a última versão do PostgreSQL
+    image: postgres:latest
     container_name: banco-dados
     restart: always
     environment:
@@ -154,41 +249,46 @@ services:
       POSTGRES_PASSWORD: senha123
       POSTGRES_DB: meu_banco
     ports:
-      - "5432:5432"  # Mapeia a porta do banco de dados
+      - "5432:5432"
     volumes:
-      - db_data:/var/lib/postgresql/data  # Persistência de dados
+      - db_data:/var/lib/postgresql/data
 
   app1:
-    image: minha-aplicacao:latest
+    build: ./app
     container_name: app1
     restart: always
+    environment:
+      SERVER_NAME: "container 1"
     depends_on:
-      - db  # Aguarda o banco de dados estar disponível antes de iniciar
+      - db
     networks:
       - app_network
 
   app2:
-    image: minha-aplicacao:latest
+    build: ./app
     container_name: app2
     restart: always
+    environment:
+      SERVER_NAME: "container 2"
     depends_on:
       - db
     networks:
       - app_network
 
   app3:
-    image: minha-aplicacao:latest
+    build: ./app
     container_name: app3
     restart: always
+    environment:
+      SERVER_NAME: "container 3"
     depends_on:
       - db
     networks:
       - app_network
 
   nginx:
-    image: nginx:latest
+    image: nginx
     container_name: loadbalancer
-    restart: always
     depends_on:
       - app1
       - app2
@@ -196,7 +296,7 @@ services:
     ports:
       - "80:80"
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro  # Carrega a configuração do Nginx
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
     networks:
       - app_network
 
@@ -209,31 +309,26 @@ volumes:
 
 ---
 
-## 4. Configurando o Balanceador de Carga (Nginx)
-
-Criar o arquivo de configuração do Nginx:
-
-```sh
-nano ~/projeto-loadbalancer/nginx.conf
-```
+## 4. Arquivo `nginx.conf`
 
 ```nginx
-worker_processes auto;  # Define o número de processos de trabalho automaticamente
+worker_processes auto;
 
 events {
-    worker_connections 1024;  # Número máximo de conexões simultâneas por worker
+    worker_connections 1024;
 }
 
 http {
     upstream app_servers {
         server app1:3000;
         server app2:3000;
-        server app3:3000;  # Lista de servidores backend para balanceamento
+        server app3:3000;
     }
+
     server {
-        listen 80;  # Escuta requisições na porta 80
+        listen 80;
         location / {
-            proxy_pass http://app_servers;  # Direciona as requisições para os servidores backend
+            proxy_pass http://app_servers;
         }
     }
 }
@@ -241,22 +336,14 @@ http {
 
 ---
 
-## 5. Subindo Todos os Contêineres
+## 5. Subindo o Projeto
 
 ```sh
 cd ~/projeto-loadbalancer
+
 docker-compose up -d
-```
 
-Verificar contêineres:
-
-```sh
 docker ps
-```
 
-Testar a aplicação no navegador ou via curl:
-
-```sh
-curl http://SEU_IP_PUBLICO
 ```
 
