@@ -1,3 +1,5 @@
+---
+
 # Projeto: Redes 2025-1
 
 ---
@@ -25,6 +27,7 @@
 ```
 
 ![alt text](<utils/Topologia de Rede.svg>)
+
 ---
 
 ## 1. Configurando a Instância AWS Ubuntu
@@ -345,6 +348,131 @@ cd ~/projeto-loadbalancer
 docker-compose up -d
 
 docker ps
-
 ```
 
+---
+
+## 6. Configurando OpenVPN para Acesso Seguro
+
+### 6.1. Preparação e Diretórios
+
+No servidor Ubuntu onde o projeto está hospedado, crie uma pasta para armazenar os dados do OpenVPN, incluindo certificados e configurações:
+
+```sh
+cd ~
+mkdir -p openvpn-data
+```
+
+### 6.2. Inicializando a PKI (Infraestrutura de Chaves Públicas)
+
+Rode o container oficial para inicializar a PKI (autoridade certificadora) do OpenVPN:
+
+```sh
+docker run -v $HOME/openvpn-data:/etc/openvpn --rm -it kylemanna/openvpn ovpn_initpki nopass
+```
+
+> Nota: O parâmetro `nopass` evita que você precise digitar senha para proteger a chave da CA. Se quiser mais segurança, remova `nopass` e defina uma senha.
+
+Esse comando cria a infraestrutura necessária na pasta `openvpn-data`.
+
+### 6.3. Configurando o Servidor OpenVPN
+
+Crie a configuração do servidor OpenVPN executando:
+
+```sh
+docker run -v $HOME/openvpn-data:/etc/openvpn --rm kylemanna/openvpn ovpn_genconfig -u udp://SEU_IP_OU_DNS
+```
+
+> Substitua `SEU_IP_OU_DNS` pelo IP público ou domínio do seu servidor AWS.
+
+### 6.4. Inicializando o Servidor OpenVPN
+
+Agora, gere os certificados para o servidor e inicialize o serviço:
+
+```sh
+docker run -v $HOME/openvpn-data:/etc/openvpn --rm -it kylemanna/openvpn ovpn_initpki nopass
+```
+
+> Se já rodou no passo 6.2, pule este.
+
+Em seguida, inicie o container do OpenVPN em modo daemon (background):
+
+```sh
+docker run -v $HOME/openvpn-data:/etc/openvpn -d --net=host --cap-add=NET_ADMIN --name openvpn kylemanna/openvpn
+```
+
+* `--net=host` usa a rede do host para facilitar o roteamento.
+* `--cap-add=NET_ADMIN` concede permissões de rede necessárias.
+
+### 6.5. Criando Usuários VPN
+
+Para permitir conexões VPN, crie perfis de clientes. Exemplo criando um usuário chamado `usuario1`:
+
+```sh
+docker run -v $HOME/openvpn-data:/etc/openvpn --rm -it kylemanna/openvpn easyrsa build-client-full usuario1 nopass
+```
+
+Após criar, gere o arquivo `.ovpn` para esse usuário:
+
+```sh
+docker run -v $HOME/openvpn-data:/etc/openvpn --rm kylemanna/openvpn ovpn_getclient usuario1 > usuario1.ovpn
+```
+
+Esse arquivo `usuario1.ovpn` é o perfil que deve ser importado no cliente OpenVPN (computador, celular, etc).
+
+### 6.6. Testando a VPN
+
+* Baixe o arquivo `.ovpn` para seu computador.
+* Instale o cliente OpenVPN (ex: openvpn.net).
+* Importe o arquivo `.ovpn`.
+* Conecte-se à VPN.
+
+### 6.7. Ajustando o Nginx para Permitir Acesso Somente pela VPN
+
+Atualize seu arquivo `nginx.conf` para que o acesso ao Nginx seja permitido apenas para a faixa da VPN (geralmente `10.8.0.0/24`):
+
+```nginx
+worker_processes auto;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    upstream app_servers {
+        server app1:3000;
+        server app2:3000;
+        server app3:3000;
+    }
+
+    server {
+        listen 80;
+
+        location / {
+            allow 10.8.0.0/24;
+            deny all;
+
+            proxy_pass http://app_servers;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        }
+    }
+}
+```
+
+Depois, aplique as alterações:
+
+```sh
+docker exec loadbalancer nginx -s reload
+```
+
+---
+
+## 7. Considerações Finais
+
+* Garanta que a porta UDP 1194 (padrão do OpenVPN) esteja liberada no grupo de segurança da AWS para seu servidor.
+* Use o comando `docker logs openvpn` para verificar logs do servidor VPN.
+* Sempre armazene com segurança as chaves e arquivos `.ovpn`.
+
+---
