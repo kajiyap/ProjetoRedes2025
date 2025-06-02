@@ -469,6 +469,56 @@ docker exec loadbalancer nginx -s reload
 
 ---
 
+## 6.8. Atualização do IP Público e Uso de Elastic IP
+
+### IP Público Dinâmico (padrão da AWS)
+
+O IP público padrão da instância AWS **pode mudar toda vez que a instância for reiniciada**. Isso afeta o funcionamento do OpenVPN, pois o perfil `.ovpn` dos clientes contém o IP do servidor.
+
+**Se o IP mudar, você precisa:**
+
+1. Atualizar a configuração do OpenVPN com o novo IP:
+
+```bash
+docker run -v $HOME/openvpn-data:/etc/openvpn --rm kylemanna/openvpn ovpn_genconfig -u udp://NOVO_IP
+```
+
+2. (Se for o caso) Criar novamente o certificado do cliente:
+
+```bash
+docker run -v $HOME/openvpn-data:/etc/openvpn --rm -it kylemanna/openvpn easyrsa build-client-full NOME_CLIENTE nopass
+```
+
+3. Gerar o novo arquivo `.ovpn` para o cliente:
+
+```bash
+docker run -v $HOME/openvpn-data:/etc/openvpn --rm kylemanna/openvpn ovpn_getclient NOME_CLIENTE > NOME_CLIENTE.ovpn
+```
+
+---
+
+### Elastic IP (IP fixo e recomendado)
+
+Para evitar essa dor de cabeça, **recomenda-se usar um Elastic IP**:
+
+* O Elastic IP é um endereço público fixo que permanece o mesmo mesmo após reiniciar a instância.
+* Assim, você configura o OpenVPN uma vez com esse IP fixo e não precisa mais atualizar os perfis após reinicializações.
+
+**Como associar um Elastic IP:**
+
+1. No Console AWS, acesse **Elastic IPs** no menu EC2.
+2. Clique em **Allocate Elastic IP** para reservar um novo IP.
+3. Clique em **Associate Elastic IP** e associe-o à sua instância.
+4. Atualize o OpenVPN para usar esse IP (se ainda não tiver feito):
+
+```bash
+docker run -v $HOME/openvpn-data:/etc/openvpn --rm kylemanna/openvpn ovpn_genconfig -u udp://SEU_ELASTIC_IP
+```
+
+Após isso, basta gerar seus perfis normalmente e eles funcionarão sem precisar ser atualizados após reinícios.
+
+---
+
 ## 7. Considerações Finais
 
 * Garanta que a porta UDP 1194 (padrão do OpenVPN) esteja liberada no grupo de segurança da AWS para seu servidor.
