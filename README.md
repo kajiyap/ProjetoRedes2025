@@ -395,6 +395,16 @@ sudo ./openvpn-install.sh
 
 ---
 
+📂 Arquivos e diretórios criados:
+/etc/openvpn/ → Configuração do servidor VPN
+
+/etc/openvpn/server/ → Arquivo server.conf e chaves
+
+/etc/openvpn/easy-rsa/ → Infraestrutura de certificados (CA, chaves e certificados)
+
+Arquivos dos clientes → Geralmente no diretório /root/ ou na mesma pasta onde rodou o script (cliente1.ovpn)
+
+---
 ### 3. Baixe o arquivo `.ovpn` para seu computador
 
 No seu computador local:
