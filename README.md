@@ -352,127 +352,125 @@ docker ps
 
 ---
 
-## 6. Configurando OpenVPN para Acesso Seguro
+# 📡 OpenVPN com Ubuntu na AWS - Guia Rápido
 
-### 6.1. Preparação e Diretórios
+Este guia mostra como configurar rapidamente um servidor **OpenVPN** em uma instância **Ubuntu (EC2)** na AWS e se conectar com sucesso por meio de um cliente OpenVPN.
 
-No servidor Ubuntu onde o projeto está hospedado, crie uma pasta para armazenar os dados do OpenVPN, incluindo certificados e configurações:
+---
 
-```sh
-cd ~
-mkdir -p openvpn-data
+## ✅ Pré-requisitos
+
+- Instância EC2 Ubuntu (recomenda-se Ubuntu 20.04+)
+- Acesso `ssh` à instância
+- Porta UDP `1194` liberada no **Security Group**
+- (Opcional) Conjunto de regras ACL da VPC configurado
+
+---
+
+## 🚀 Passo a passo
+
+### 1. Acesse a instância EC2
+
+```bash
+ssh -i sua-chave.pem ubuntu@<ip-da-instancia>
+````
+
+---
+
+### 2. Instale o script de instalação rápida
+
+```bash
+curl -O https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh
+chmod +x openvpn-install.sh
+sudo ./openvpn-install.sh
 ```
 
-### 6.2. Inicializando a PKI (Infraestrutura de Chaves Públicas)
+* O script fará várias perguntas. Use as configurações padrão, exceto:
 
-Rode o container oficial para inicializar a PKI (autoridade certificadora) do OpenVPN:
+  * Protocolo: **UDP**
+  * Porta: **1194**
+  * Nome do primeiro cliente: ex: `cliente1`
 
-```sh
-docker run -v $HOME/openvpn-data:/etc/openvpn --rm -it kylemanna/openvpn ovpn_initpki nopass
-```
+> Ao finalizar, o arquivo `.ovpn` será gerado e salvo, por exemplo: `cliente1.ovpn`
 
-> Nota: O parâmetro `nopass` evita que você precise digitar senha para proteger a chave da CA. Se quiser mais segurança, remova `nopass` e defina uma senha.
+---
 
-Esse comando cria a infraestrutura necessária na pasta `openvpn-data`.
+### 3. Baixe o arquivo `.ovpn` para seu computador
 
-### 6.3. Configurando o Servidor OpenVPN
+No seu computador local:
 
-Crie a configuração do servidor OpenVPN executando:
-
-```sh
-docker run -v $HOME/openvpn-data:/etc/openvpn --rm kylemanna/openvpn ovpn_genconfig -u udp://SEU_IP_OU_DNS
-```
-
-> Substitua `SEU_IP_OU_DNS` pelo IP público ou domínio do seu servidor AWS.
-
-### 6.4. Inicializando o Servidor OpenVPN
-
-Agora, gere os certificados para o servidor e inicialize o serviço:
-
-```sh
-docker run -v $HOME/openvpn-data:/etc/openvpn --rm -it kylemanna/openvpn ovpn_initpki nopass
-```
-
-> Se já rodou no passo 6.2, pule este.
-
-Em seguida, inicie o container do OpenVPN em modo daemon (background):
-
-```sh
-docker run -v $HOME/openvpn-data:/etc/openvpn -d --net=host --cap-add=NET_ADMIN --name openvpn kylemanna/openvpn
-```
-
-* `--net=host` usa a rede do host para facilitar o roteamento.
-* `--cap-add=NET_ADMIN` concede permissões de rede necessárias.
-
-### 6.5. Criando Usuários VPN
-
-Para permitir conexões VPN, crie perfis de clientes. Exemplo criando um usuário chamado `usuario1`:
-
-```sh
-docker run -v $HOME/openvpn-data:/etc/openvpn --rm -it kylemanna/openvpn easyrsa build-client-full usuario1 nopass
-```
-
-Após criar, gere o arquivo `.ovpn` para esse usuário:
-
-```sh
-docker run -v $HOME/openvpn-data:/etc/openvpn --rm kylemanna/openvpn ovpn_getclient usuario1 > usuario1.ovpn
-```
-
-Esse arquivo `usuario1.ovpn` é o perfil que deve ser importado no cliente OpenVPN (computador, celular, etc).
-
-### 6.6. Testando a VPN
-
-* Baixe o arquivo `.ovpn` para seu computador.
-* Instale o cliente OpenVPN (ex: openvpn.net).
-* Importe o arquivo `.ovpn`.
-* Conecte-se à VPN.
-
-### 6.7. Ajustando o Nginx para Permitir Acesso Somente pela VPN
-
-Atualize seu arquivo `nginx.conf` para que o acesso ao Nginx seja permitido apenas para a faixa da VPN (geralmente `10.8.0.0/24`):
-
-```nginx
-worker_processes auto;
-
-events {
-    worker_connections 1024;
-}
-
-http {
-    upstream app_servers {
-        server app1:3000;
-        server app2:3000;
-        server app3:3000;
-    }
-
-    server {
-        listen 80;
-
-        location / {
-            allow 10.8.0.0/24;
-            deny all;
-
-            proxy_pass http://app_servers;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        }
-    }
-}
-```
-
-Depois, aplique as alterações:
-
-```sh
-docker exec loadbalancer nginx -s reload
+```bash
+scp -i sua-chave.pem ubuntu@<ip-da-instancia>:~/cliente1.ovpn .
 ```
 
 ---
 
-## 7. Considerações Finais
+### 4. Importe o `.ovpn` no cliente VPN
 
-* Garanta que a porta UDP 1194 (padrão do OpenVPN) esteja liberada no grupo de segurança da AWS para seu servidor.
-* Use o comando `docker logs openvpn` para verificar logs do servidor VPN.
-* Sempre armazene com segurança as chaves e arquivos `.ovpn`.
+* No Windows: use [OpenVPN GUI](https://openvpn.net/community-downloads/)
+* No Linux/macOS: use `nmcli` ou `openvpn --config cliente1.ovpn`
 
 ---
+
+### 5. Conecte à VPN
+
+* No OpenVPN GUI, clique com o botão direito no ícone → “Conectar”.
+* Após conectar, o IP da VPN será algo como `10.8.0.x`.
+
+---
+
+## 🛡️ (Opcional) Restringir acesso externo (porta 80, etc)
+
+Se deseja bloquear acesso externo (ex: porta 80) e permitir **somente via VPN**:
+
+### Exemplo de regras no Security Group:
+
+| Tipo            | Protocolo | Porta | Origem      |
+| --------------- | --------- | ----- | ----------- |
+| Custom UDP      | UDP       | 1194  | 0.0.0.0/0   |
+| SSH             | TCP       | 22    | Seu IP      |
+| HTTP (opcional) | TCP       | 80    | 10.8.0.0/24 |
+
+---
+
+## 🧪 Testes
+
+1. Após conectar-se pela VPN, verifique:
+
+```bash
+ping 10.8.0.1
+curl http://10.8.0.1
+```
+
+2. Verifique se a porta está escutando (na EC2):
+
+```bash
+sudo ss -tuln | grep :80
+```
+
+---
+
+## 🔁 Gerenciar novos clientes
+
+Para adicionar/remover clientes no futuro:
+
+```bash
+sudo ./openvpn-install.sh
+```
+
+> Use a opção “Adicionar novo cliente” e digite o nome. O arquivo `.ovpn` será gerado novamente.
+
+---
+
+## 🧹 Remover OpenVPN
+
+Se quiser remover completamente:
+
+```bash
+sudo ./openvpn-install.sh
+```
+
+> E selecione a opção de desinstalar.
+
+---
+
